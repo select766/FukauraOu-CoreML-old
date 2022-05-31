@@ -94,6 +94,7 @@ COMPILER = clang++
 # 標準的なコンパイルオプション (standard compile options)
 CPPFLAGS   = -std=c++17 -fno-exceptions -fno-rtti -Wextra -MMD -MP -fpermissive
 NVCC_CPPFLAGS = -std=c++17 -x cu -maxrregcount=0 --machine 64 --compile -cudart static -DNDEBUG -Xcompiler "-Ofast"
+OBJCFLAGS  = -std=c++17
 WCPPFLAGS  =
 LDFLAGS  = $(EXTRA_LDFLAGS)
 LIBS     =
@@ -134,6 +135,7 @@ ifneq (,$(findstring em++,$(COMPILER)))
 	CPPFLAGS += -O2
 else
 	CPPFLAGS += -Ofast
+	OBJCFLAGS += -Ofast
 endif
 
 # デバッガーを使わないなら、NDEBUGをdefineする。
@@ -331,6 +333,8 @@ SOURCES  = \
 
 CUDA_SOURCES =
 
+OBJC_SOURCES =
+
 #ifneq (,$(findstring evallearn,$@))
 # →これこの時点で$@を取得できないのか…。なんぞこれ。
 
@@ -397,6 +401,11 @@ ifneq (,$(findstring YANEURAOU_ENGINE_DEEP,$(YANEURAOU_EDITION)))
 		else ifeq ($(YANEURAOU_EDITION),YANEURAOU_ENGINE_DEEP_ORT_TRT)
 			CPPFLAGS += -DONNXRUNTIME -DORT_NO_EXCEPTIONS -DORT_TRT
 			LDFLAGS += -lonnxruntime
+
+		else ifeq ($(YANEURAOU_EDITION),YANEURAOU_ENGINE_DEEP_COREML)
+			CPPFLAGS += -DCOREML
+			LDFLAGS += -framework Foundation -framework CoreML
+			OBJC_SOURCES += eval/deep/nn_coreml.mm
 
 		endif
 	endif
@@ -588,13 +597,14 @@ CPPFLAGS += -D$(YANEURAOU_EDITION) -DTARGET_CPU=\"$(TARGET_CPU)\" $(EXTRA_CPPFLA
 NVCC_CPPFLAGS += -D$(YANEURAOU_EDITION) -DTARGET_CPU=\"$(TARGET_CPU)\"
 
 OBJECTS  = $(addprefix $(OBJDIR)/, $(SOURCES:.cpp=.o))
+OBJC_OBJECTS = $(addprefix $(OBJDIR)/, $(OBJC_SOURCES:.mm=.o))
 CUDA_OBJECTS = $(addprefix $(OBJDIR)/, $(CUDA_SOURCES:.cu=.o))
 DEPENDS  = $(OBJECTS:.o=.d)
 
 all: clean $(TARGET)
 .PHONY : all normal evallearn tournament prof profgen profuse pgo clean
 
-$(TARGET): $(OBJECTS) $(CUDA_OBJECTS)
+$(TARGET): $(OBJECTS) $(CUDA_OBJECTS) $(OBJC_OBJECTS)
 	$(COMPILER) -o $@ $^ $(LDFLAGS) $(CPPFLAGS) $(LIBS)
 
 $(OBJDIR)/%.o: %.cpp
@@ -603,6 +613,10 @@ $(OBJDIR)/%.o: %.cpp
 
 $(OBJDIR)/%.o: %.cu
 	nvcc $(NVCC_CPPFLAGS) $(INCLUDE) -o $@ $<
+
+$(OBJDIR)/%.o: %.mm
+	@[ -d $(dir $@) ] || mkdir -p $(dir $@)
+	$(COMPILER) $(OBJCFLAGS) $(INCLUDE) -o $@ -c $<
 
 # https://gcc.gnu.org/onlinedocs/gcc/x86-Options.html
 
